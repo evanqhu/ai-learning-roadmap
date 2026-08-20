@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "ai-learning-roadmap",
+  "compatibility_date": "2026-08-20",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  },
+  "routes": [
+    {
+      "pattern": "ai-learning.evanqhu.me",
+      "custom_domain": true
+    }
+  ]
+}
