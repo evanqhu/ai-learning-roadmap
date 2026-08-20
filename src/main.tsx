@@ -29,6 +29,8 @@ import {
   Zap,
 } from 'lucide-react';
 import './styles.css';
+import { lessons, lessonsByPhase } from './course-data';
+import { LessonPage } from './LessonPage';
 
 type Phase = {
   id: string;
@@ -118,14 +120,21 @@ const stack = [
 
 function App() {
   const [completed, setCompleted] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('agent-shift-progress') || '[]'); } catch { return []; }
+    try { return JSON.parse(localStorage.getItem('agent-shift-course-progress-v1') || '[]'); } catch { return []; }
   });
   const [openPhase, setOpenPhase] = useState('foundation');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [hash, setHash] = useState(() => window.location.hash);
 
-  useEffect(() => localStorage.setItem('agent-shift-progress', JSON.stringify(completed)), [completed]);
-  const percent = Math.round((completed.length / phases.length) * 100);
-  const currentPhase = phases.find((p) => !completed.includes(p.id)) ?? phases[phases.length - 1];
+  useEffect(() => localStorage.setItem('agent-shift-course-progress-v1', JSON.stringify(completed)), [completed]);
+  useEffect(() => {
+    const onHashChange = () => { setHash(window.location.hash); window.scrollTo(0, 0); };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+  const percent = Math.round((completed.length / lessons.length) * 100);
+  const currentLesson = lessons.find((item) => !completed.includes(item.id)) ?? lessons[lessons.length - 1];
+  const currentPhase = phases.find((phase) => phase.id === currentLesson.phaseId) ?? phases[phases.length - 1];
   const circumference = 2 * Math.PI * 52;
 
   const progressText = useMemo(() => {
@@ -139,6 +148,18 @@ function App() {
     setCompleted((prev) => prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]);
   };
 
+  const togglePhase = (phaseId: string) => {
+    const ids = lessonsByPhase(phaseId).map((item) => item.id);
+    setCompleted((prev) => ids.every((id) => prev.includes(id)) ? prev.filter((id) => !ids.includes(id)) : [...new Set([...prev, ...ids])]);
+  };
+
+  const lessonId = hash.startsWith('#lesson/') ? hash.slice('#lesson/'.length) : '';
+  const activeLesson = lessons.find((item) => item.id === lessonId);
+  if (activeLesson) {
+    const index = lessons.indexOf(activeLesson);
+    return <LessonPage lesson={activeLesson} completed={completed.includes(activeLesson.id)} previous={lessons[index - 1]} next={lessons[index + 1]} onToggle={toggleComplete} />;
+  }
+
   return (
     <div className="site-shell">
       <header className="topbar">
@@ -149,6 +170,7 @@ function App() {
         <nav className={menuOpen ? 'nav-links is-open' : 'nav-links'}>
           <a href="#map" onClick={() => setMenuOpen(false)}>能力地图</a>
           <a href="#roadmap" onClick={() => setMenuOpen(false)}>24 周路线</a>
+          <a href="#course" onClick={() => setMenuOpen(false)}>每周课程</a>
           <a href="#stack" onClick={() => setMenuOpen(false)}>技术栈</a>
           <a href="#resources" onClick={() => setMenuOpen(false)}>资料库</a>
         </nav>
@@ -182,8 +204,8 @@ function App() {
               <p>{progressText}</p>
               <div className="next-up">
                 <span>NEXT UP</span>
-                <b>{currentPhase.index} / {currentPhase.title}</b>
-                <small>{currentPhase.weeks}</small>
+                <b>W{String(currentLesson.week).padStart(2, '0')} / {currentLesson.title}</b>
+                <small>{currentPhase.title}</small>
               </div>
               {completed.length > 0 && <button className="reset-button" onClick={() => setCompleted([])}><RotateCcw size={13} /> 重置进度</button>}
             </aside>
@@ -233,7 +255,8 @@ function App() {
           <div className="phase-list">
             {phases.map((phase) => {
               const isOpen = openPhase === phase.id;
-              const isDone = completed.includes(phase.id);
+              const phaseLessons = lessonsByPhase(phase.id);
+              const isDone = phaseLessons.every((item) => completed.includes(item.id));
               return (
                 <article className={`phase ${isOpen ? 'is-open' : ''} ${isDone ? 'is-done' : ''}`} key={phase.id} style={{ '--phase-color': phase.color } as React.CSSProperties}>
                   <button className="phase-summary" onClick={() => setOpenPhase(isOpen ? '' : phase.id)} aria-expanded={isOpen}>
@@ -252,12 +275,32 @@ function App() {
                       <span className="detail-label">DEFINITION OF DONE</span>
                       {phase.checks.map((check) => <p key={check}><Check size={14} />{check}</p>)}
                     </div>
-                    <button className={isDone ? 'complete-button done' : 'complete-button'} onClick={() => toggleComplete(phase.id)}>
+                    <a className="phase-course-link" href={`#lesson/${phaseLessons[0].id}`}>查看本阶段课程 <ArrowRight size={14}/></a>
+                    <button className={isDone ? 'complete-button done' : 'complete-button'} onClick={() => togglePhase(phase.id)}>
                       {isDone ? <CheckCircle2 size={17} /> : <Circle size={17} />}{isDone ? '已完成此阶段' : '标记为完成'}
                     </button>
                   </div>
                 </article>
               );
+            })}
+          </div>
+        </section>
+
+        <section className="course section-pad" id="course">
+          <div className="section-head">
+            <div><div className="section-label">03 / 每周课程</div><h2>不是目录，<br />是 24 份行动手册</h2></div>
+            <p>每周都有核心知识、参考代码、动手实验、交付物、自测问题和可核验的完成标准。进度仅保存在当前浏览器。</p>
+          </div>
+          <div className="course-progress"><span>{completed.length} / {lessons.length} WEEKS</span><i><b style={{width:`${percent}%`}} /></i><strong>{percent}%</strong></div>
+          <div className="week-grid">
+            {lessons.map((item) => {
+              const phase = phases.find((entry) => entry.id === item.phaseId)!;
+              const done = completed.includes(item.id);
+              return <a className={done ? 'week-card is-done' : 'week-card'} href={`#lesson/${item.id}`} key={item.id} style={{'--week-color':phase.color} as React.CSSProperties}>
+                <div><span>W{String(item.week).padStart(2,'0')}</span>{done ? <CheckCircle2 size={17}/> : <ArrowRight size={17}/>}</div>
+                <small>{phase.title}</small><h3>{item.title}</h3><p>{item.subtitle}</p>
+                <footer><b>{item.deliverable}</b><span>{item.practice.length} 个实验</span></footer>
+              </a>;
             })}
           </div>
         </section>
